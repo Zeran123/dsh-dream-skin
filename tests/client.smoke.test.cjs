@@ -6215,7 +6215,7 @@ test('issue #110 follow-up: the reduce-transparency listener belongs to the fibe
 	const mql = mqlOfRecording();
 	const h = buildSandbox({
 		seed: { 'dsh-dream-skin:wallpaper': 'data:image/png;base64,AAAA' },
-		matchMedia: () => mql
+		matchMedia: (query) => query === '(prefers-reduced-transparency: reduce)' ? mql : { matches: false }
 	});
 	const e = h.factory(makeRequire(makeRuntime().RT));
 	const ctxA = makeApplyContext(h);
