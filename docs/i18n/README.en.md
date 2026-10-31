@@ -76,6 +76,12 @@ The two ways are layered and independent: a preset decides the "material &amp; b
 
 ---
 
+## Follow the system appearance
+
+In **Settings → Theme → Skins**, choose **Follow system**, then choose the **Light mode skin** and **Dark mode skin** independently. OS appearance changes apply the matching skin immediately, without a page refresh. Both choices persist; the defaults are `ivory` for light and `abyss` for dark. Choose any fixed skin or **Default** to stop following the system; the saved pair remains available. Automatic pairs currently use built-in skins only. Imported theme packs remain available for manual selection. Custom wallpapers and accent colors are preserved.
+
+---
+
 ## 🧱 Serious DIY space (Way #2)
 
 > Beyond the presets, dsh-dream-skin gives you a full customization system, start here to craft a workspace that's
