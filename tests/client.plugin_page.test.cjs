@@ -1,15 +1,15 @@
 /**
  * dsh-dream-skin — the host's plugin manager page (issue #130).
  *
- * The official plugin manager (host 0.2.1-rc.5) paints no background on its
- * page, groups or cards: they inherit the layout canvas, and the opaque parts a
- * reader sees are the inner containers. Those containers now join the modal
- * glass recipe — the same blur declaration, no new layer count — and follow the
- * 弹窗透明度 slider; the page root clears any inherited paint under a wash.
+ * The official plugin manager (host 0.2.1-rc.4) paints no background on its
+ * page, groups, detail views or row lists. Those nodes inherit the layout
+ * canvas. They must NOT join the modal-glass rule: that fill falls back to 94%
+ * when no popup weight is stored, so the page becomes a near-solid slab over
+ * the wallpaper. Under a wash the layout nodes stay clear and the shell canvas
+ * shows through. Without a wash the host canvas stands.
  *
- * Boundary: this is a source-level contract for CSS we could not eyeball in a
- * live 0.2.1-rc.5 host (this machine runs 0.2.0-rc.1). It proves the rules are
- * present and gated, not that the page looks right.
+ * Boundary: source-level contract. It proves the glass rule cannot cover the
+ * page and the wash clear stays gated. It does not prove a live pixel.
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -18,63 +18,97 @@ const path = require('node:path');
 
 const CODE = fs.readFileSync(path.join(__dirname, '..', 'lib', 'client.js'), 'utf8');
 
-const PLUGIN_SELECTORS = [
-	'"[data-plugin-group],"',
-	'"[data-plugin-item-detail],"',
-	'"[data-plugin-detail],"',
-	'"[data-plugin-rows],"'
+const PLUGIN_ATTRS = [
+	'data-plugin-panel',
+	'data-plugin-group',
+	'data-plugin-item-detail',
+	'data-plugin-detail',
+	'data-plugin-rows'
 ];
 
-/** The whole modal-glass rule plus the page-root rule that follows it. */
+/** Selector list of the modal-glass rule, before its declaration block. */
 function modalGlassSelectors(text) {
 	const start = text.indexOf('QUESTION_CARD_SELECTOR + ","');
+	if (start < 0) return null;
+	const end = text.indexOf('".Mbwy4a_card {"', start);
+	return end > start ? text.slice(start, end) : null;
+}
+
+/** The wash-gated clear that follows the modal-glass rule. */
+function pluginClearRule(text) {
+	const start = text.indexOf('Plugin manager page (issue #130');
 	if (start < 0) return null;
 	const end = text.indexOf('// --- Composer (chat input) glass', start);
 	return end > start ? text.slice(start, end) : null;
 }
 
-const ROOT_RULE = /"html\[" \+ WASH_ACTIVE_ATTR \+ "\] \[data-plugin-panel\] \{",\s*"  background-color: transparent !important;",/;
-
 function pluginPageProblems(text) {
 	const problems = [];
-	const block = modalGlassSelectors(text);
-	if (block === null) {
-		problems.push('modal glass selector block moved — cannot name the rule the plugin page joins');
+	const glass = modalGlassSelectors(text);
+	const clear = pluginClearRule(text);
+	if (glass === null) {
+		problems.push('modal glass selector list moved — cannot prove the plugin page stayed out of it');
 		return problems;
 	}
-	// Non-vacuous: the slice must be the rule we think it is.
-	if (!block.includes('MODAL_FILL_VAR') || !block.includes('PLAN_CARD_SELECTOR')) {
-		problems.push('the slice is not the modal-glass rule (marker lines missing)');
+	if (!glass.includes('MODAL_FILL_VAR') && !text.includes('MODAL_FILL_VAR')) {
+		problems.push('the modal-glass rule lost its fill variable');
 	}
-	for (const selector of PLUGIN_SELECTORS) {
-		if (!block.includes(selector)) problems.push(`the plugin page selector ${selector} left the modal-glass rule`);
+	if (!glass.includes('PLAN_CARD_SELECTOR')) {
+		problems.push('the slice is not the modal-glass selector list');
 	}
-	if (!ROOT_RULE.test(text)) {
-		problems.push('the page root is not cleared under a wash (rule missing or no longer gated by WASH_ACTIVE_ATTR)');
+	for (const attr of PLUGIN_ATTRS) {
+		if (glass.includes(attr)) {
+			problems.push(`${attr} joined the modal-glass rule — its 94% fallback covers the page`);
+		}
+	}
+	if (clear === null) {
+		problems.push('the plugin page clear rule moved or was deleted');
+		return problems;
+	}
+	if (!clear.includes('background-color: transparent !important;')) {
+		problems.push('the plugin page clear rule no longer erases background-color');
+	}
+	if (!clear.includes('background-image: none !important;')) {
+		problems.push('the plugin page clear rule no longer erases background-image');
+	}
+	for (const attr of PLUGIN_ATTRS) {
+		const gated = `html[" + WASH_ACTIVE_ATTR + "] [${attr}]`;
+		if (!clear.includes(gated)) {
+			problems.push(`${attr} is not cleared under a wash`);
+		}
 	}
 	return problems;
 }
 
-test('plugin page: its containers join the modal glass, and the root is cleared under a wash', () => {
+test('plugin page: layout nodes stay out of modal glass and clear under a wash', () => {
 	assert.deepEqual(pluginPageProblems(CODE), [], `\n${pluginPageProblems(CODE).join('\n')}\n`);
 });
 
-test('mutation: dropping any plugin selector from the glass rule reddens by name', () => {
-	for (const selector of PLUGIN_SELECTORS) {
-		const without = CODE.replace(selector, '');
-		assert.notEqual(without, CODE, `the anchor ${selector} moved`);
-		const problems = pluginPageProblems(without);
-		assert.equal(problems.length, 1, `expected exactly one problem for ${selector}, got ${JSON.stringify(problems)}`);
-		assert.match(problems[0], /left the modal-glass rule/);
+test('mutation: putting a plugin layout node back into modal glass reddens by name', () => {
+	for (const attr of PLUGIN_ATTRS.filter((name) => name !== 'data-plugin-panel')) {
+		const withGlass = CODE.replace(
+			'PLAN_CARD_SELECTOR + ",",',
+			`PLAN_CARD_SELECTOR + ",",\n\t\t\t\t"[${attr}],",`
+		);
+		assert.notEqual(withGlass, CODE, `the glass list anchor moved for ${attr}`);
+		const problems = pluginPageProblems(withGlass);
+		assert.equal(problems.length, 1, `expected exactly one problem for ${attr}, got ${JSON.stringify(problems)}`);
+		assert.match(problems[0], new RegExp(`${attr} joined the modal-glass rule`));
 	}
 });
 
-test('mutation: an ungated or deleted page-root rule reddens', () => {
-	const ungated = CODE.replace('"html[" + WASH_ACTIVE_ATTR + "] [data-plugin-panel] {"', '"[data-plugin-panel] {"');
-	assert.notEqual(ungated, CODE, 'the page-root rule anchor moved');
-	assert.ok(pluginPageProblems(ungated).some((p) => p.includes('page root')), 'an ungated root rule must be a problem');
+test('mutation: an ungated or deleted page clear reddens', () => {
+	const ungated = CODE.replaceAll('html[" + WASH_ACTIVE_ATTR + "] [data-plugin-', '[data-plugin-');
+	assert.notEqual(ungated, CODE, 'the wash-gated plugin selectors moved');
+	assert.ok(
+		pluginPageProblems(ungated).some((p) => p.includes('not cleared under a wash')),
+		'an ungated clear must be a problem'
+	);
 
-	const deleted = CODE.replace(ROOT_RULE, '');
-	assert.notEqual(deleted, CODE, 'the page-root rule anchor moved');
-	assert.ok(pluginPageProblems(deleted).some((p) => p.includes('page root')), 'a deleted root rule must be a problem');
+	const deleted = CODE.replace(pluginClearRule(CODE), '');
+	assert.notEqual(deleted, CODE, 'the clear rule anchor moved');
+	assert.ok(
+		pluginPageProblems(deleted).some((p) => p.includes('clear rule')),
+		'a deleted clear rule must be a problem'
+	);
 });
